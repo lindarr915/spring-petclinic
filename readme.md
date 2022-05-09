@@ -30,10 +30,40 @@ Or you can run it from Maven directly using the Spring Boot Maven plugin. If you
 
 ## Building a Container
 
-There is no `Dockerfile` in this project. You can build a container image (if you have a docker daemon) using the Spring Boot build plugin:
+There are many different ways to build a container image. 
+
+1. Build with a Dockerfile (a fat jar)
 
 ```
-./mvnw spring-boot:build-image
+FROM openjdk:8-jre-alpine
+VOLUME /tmp
+ARG JAVA_OPTS
+ENV JAVA_OPTS=$JAVA_OPTS
+COPY target/spring-petclinic-2.6.0-SNAPSHOT.jar springpetclinic.jar
+EXPOSE 3000
+# ENTRYPOINT exec java $JAVA_OPTS -jar springpetclinic.jar
+# For Spring-Boot project, use the entrypoint below to reduce Tomcat startup time.
+ENTRYPOINT exec java $JAVA_OPTS -Djava.security.egd=file:/dev/./urandom -jar springpetclinic.jar
+```
+
+Build your Docker image using the following commands:\
+```
+docker build -t pet-clinic .
+docker tag pet-clinic:latest 091550601287.dkr.ecr.us-west-2.amazonaws.com/pet-clinic:latest
+docker push 091550601287.dkr.ecr.us-west-2.amazonaws.com/pet-clinic:latest
+```
+
+2. Use Jib
+Run commands for example 
+```
+aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 091550601287.dkr.ecr.us-west-2.amazonaws.com
+mvn com.google.cloud.tools:jib-maven-plugin:build -Dimage=091550601287.dkr.ecr.us-west-2.amazonaws.com/pet-clinic:latest
+```
+
+3. Run with spring boot plugins 
+
+```
+./mvnw spring-boot:build-image -DskipTests
 ```
 
 ## In case you find a bug/suggested improvement for Spring Petclinic
