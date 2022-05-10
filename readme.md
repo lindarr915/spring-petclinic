@@ -1,5 +1,130 @@
 # Spring PetClinic Sample Application [![Build Status](https://github.com/spring-projects/spring-petclinic/actions/workflows/maven-build.yml/badge.svg)](https://github.com/spring-projects/spring-petclinic/actions/workflows/maven-build.yml)
 
+## Preparing an IDE environment
+
+
+1. Increase the size of disk volumes
+```
+pip3 install --user --upgrade boto3
+export instance_id=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+python -c "import boto3
+import os
+from botocore.exceptions import ClientError 
+ec2 = boto3.client('ec2')
+volume_info = ec2.describe_volumes(
+    Filters=[
+        {
+            'Name': 'attachment.instance-id',
+            'Values': [
+                os.getenv('instance_id')
+            ]
+        }
+    ]
+)
+volume_id = volume_info['Volumes'][0]['VolumeId']
+try:
+    resize = ec2.modify_volume(    
+            VolumeId=volume_id,    
+            Size=30
+    )
+    print(resize)
+except ClientError as e:
+    if e.response['Error']['Code'] == 'InvalidParameterValue':
+        print('ERROR MESSAGE: {}'.format(e))"
+if [ $? -eq 0 ]; then
+    sudo reboot
+fi
+```
+
+2. Install brew package manager 
+https://brew.sh/
+```
+sudo passwd ec2-user # Change the user password
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+- Run these two commands in your terminal to add Homebrew to your PATH:
+```
+    echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> /home/ec2-user/.bash_profile
+    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+```
+
+Install Maven
+```
+brew install maven
+```
+
+Get your account ID
+```
+TeamRole:~/environment/spring-petclinic (main) $ export ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
+```
+
+## Building a Container
+
+There are many different ways to build a container image. 
+
+0. Create the container repo
+
+```
+TeamRole:~/environment/spring-petclinic (main) $ aws ecr create-repository --repository-name pet-clinic 
+{
+    "repository": {
+        "repositoryUri": "537400238734.dkr.ecr.us-west-2.amazonaws.com/pet-clinic", 
+        "imageScanningConfiguration": {
+            "scanOnPush": false
+        }, 
+        "encryptionConfiguration": {
+            "encryptionType": "AES256"
+        }, 
+        "registryId": "537400238734", 
+        "imageTagMutability": "MUTABLE", 
+        "repositoryArn": "arn:aws:ecr:us-west-2:537400238734:repository/pet-clinic", 
+        "repositoryName": "pet-clinic", 
+        "createdAt": 1652155776.0
+    }
+}
+```
+
+1. Build with a Dockerfile (a fat jar)
+
+```
+FROM openjdk:8-jre-alpine
+VOLUME /tmp
+ARG JAVA_OPTS
+ENV JAVA_OPTS=$JAVA_OPTS
+COPY target/spring-petclinic-2.6.0-SNAPSHOT.jar springpetclinic.jar
+EXPOSE 3000
+# ENTRYPOINT exec java $JAVA_OPTS -jar springpetclinic.jar
+# For Spring-Boot project, use the entrypoint below to reduce Tomcat startup time.
+ENTRYPOINT exec java $JAVA_OPTS -Djava.security.egd=file:/dev/./urandom -jar springpetclinic.jar
+```
+
+Build your Docker image using the following commands:\
+```
+docker build -t pet-clinic .
+docker tag pet-clinic:latest $ACCOUNT_ID.dkr.ecr.us-west-2.amazonaws.com/pet-clinic:latest
+docker push $ACCOUNT_ID.dkr.ecr.us-west-2.amazonaws.com/pet-clinic:latest
+```
+
+Run the container locally 
+```
+docker run -p 8080:8080 pet-clinic
+```
+
+2. Use Jib
+Run commands for example 
+```
+aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.us-west-2.amazonaws.com
+mvn com.google.cloud.tools:jib-maven-plugin:build -Dimage=ACCOUNT_ID.dkr.ecr.us-west-2.amazonaws.com/pet-clinic:latest
+```
+
+3. Run with spring boot plugins 
+
+```
+./mvnw spring-boot:build-image -DskipTests -Dspring-boot.build-image.imageName=$ACCOUNT_ID.dkr.ecr.us-west-2.amazonaws.com/pet-clinic
+```
+
+
 ## Understanding the Spring Petclinic application with a few diagrams
 <a href="https://speakerdeck.com/michaelisvy/spring-petclinic-sample-application">See the presentation here</a>
 
@@ -27,44 +152,6 @@ Or you can run it from Maven directly using the Spring Boot Maven plugin. If you
 > NOTE: Windows users should set `git config core.autocrlf true` to avoid format assertions failing the build (use `--global` to set that flag globally).
 
 > NOTE: If you prefer to use Gradle, you can build the app using `./gradlew build` and look for the jar file in `build/libs`.
-
-## Building a Container
-
-There are many different ways to build a container image. 
-
-1. Build with a Dockerfile (a fat jar)
-
-```
-FROM openjdk:8-jre-alpine
-VOLUME /tmp
-ARG JAVA_OPTS
-ENV JAVA_OPTS=$JAVA_OPTS
-COPY target/spring-petclinic-2.6.0-SNAPSHOT.jar springpetclinic.jar
-EXPOSE 3000
-# ENTRYPOINT exec java $JAVA_OPTS -jar springpetclinic.jar
-# For Spring-Boot project, use the entrypoint below to reduce Tomcat startup time.
-ENTRYPOINT exec java $JAVA_OPTS -Djava.security.egd=file:/dev/./urandom -jar springpetclinic.jar
-```
-
-Build your Docker image using the following commands:\
-```
-docker build -t pet-clinic .
-docker tag pet-clinic:latest 091550601287.dkr.ecr.us-west-2.amazonaws.com/pet-clinic:latest
-docker push 091550601287.dkr.ecr.us-west-2.amazonaws.com/pet-clinic:latest
-```
-
-2. Use Jib
-Run commands for example 
-```
-aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 091550601287.dkr.ecr.us-west-2.amazonaws.com
-mvn com.google.cloud.tools:jib-maven-plugin:build -Dimage=091550601287.dkr.ecr.us-west-2.amazonaws.com/pet-clinic:latest
-```
-
-3. Run with spring boot plugins 
-
-```
-./mvnw spring-boot:build-image -DskipTests
-```
 
 ## In case you find a bug/suggested improvement for Spring Petclinic
 Our issue tracker is available here: https://github.com/spring-projects/spring-petclinic/issues
