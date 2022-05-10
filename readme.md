@@ -2,6 +2,7 @@
 
 ## Preparing an IDE environment
 
+Create a Cloud9 instance with m5.large or m5.xlarge.
 
 1. Increase the size of disk volumes
 ```
@@ -122,6 +123,23 @@ mvn com.google.cloud.tools:jib-maven-plugin:build -Dimage=ACCOUNT_ID.dkr.ecr.us-
 
 ```
 ./mvnw spring-boot:build-image -DskipTests -Dspring-boot.build-image.imageName=$ACCOUNT_ID.dkr.ecr.us-west-2.amazonaws.com/pet-clinic
+```
+
+## Check ECR Console 
+
+## Create ECS Task Definition 
+
+## Create ECS Service 
+
+## View Metrics
+
+## Stress with hey
+
+```
+brew install hey
+
+URL=http://my-load-balancer-831059280.us-west-2.elb.amazonaws.com
+hey -c 200 -z 10m $URL
 ```
 
 
